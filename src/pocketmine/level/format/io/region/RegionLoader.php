@@ -23,8 +23,8 @@ declare(strict_types=1);
 
 namespace pocketmine\level\format\io\region;
 
-use pocketmine\level\format\Chunk;
 use pocketmine\level\format\ChunkException;
+use pocketmine\level\format\io\exception\CorruptedChunkException;
 use pocketmine\utils\Binary;
 use pocketmine\utils\MainLogger;
 
@@ -49,18 +49,15 @@ class RegionLoader{
 	protected $filePointer;
 	/** @var int */
 	protected $lastSector;
-	/** @var McRegion */
-	protected $levelProvider;
 	/** @var int[][] [offset in sectors, chunk size in sectors, timestamp] */
 	protected $locationTable = [];
 	/** @var int */
 	public $lastUsed = 0;
 
-	public function __construct(McRegion $level, int $regionX, int $regionZ, string $fileExtension = McRegion::REGION_FILE_EXTENSION){
+	public function __construct(string $filePath, int $regionX, int $regionZ){
 		$this->x = $regionX;
 		$this->z = $regionZ;
-		$this->levelProvider = $level;
-		$this->filePath = $this->levelProvider->getPath() . "region/r.$regionX.$regionZ.$fileExtension";
+		$this->filePath = $filePath;
 	}
 
 	public function open(){
@@ -99,10 +96,18 @@ class RegionLoader{
 		return !($this->locationTable[$index][0] === 0 or $this->locationTable[$index][1] === 0);
 	}
 
-	public function readChunk(int $x, int $z){
+	/**
+	 * @param int $x
+	 * @param int $z
+	 *
+	 * @return null|string
+	 * @throws \InvalidArgumentException if invalid coordinates are given
+	 * @throws CorruptedChunkException if chunk corruption is detected
+	 */
+	public function readChunk(int $x, int $z) : ?string{
 		$index = self::getChunkOffset($x, $z);
 		if($index < 0 or $index >= 4096){
-			return null;
+			throw new \InvalidArgumentException("Invalid chunk position in region, expected x/z in range 0-31, got x=$x, z=$z");
 		}
 
 		$this->lastUsed = time();
@@ -119,34 +124,35 @@ class RegionLoader{
 			if($length >= self::MAX_SECTOR_LENGTH){
 				$this->locationTable[$index][0] = ++$this->lastSector;
 				$this->locationTable[$index][1] = 1;
-				MainLogger::getLogger()->error("Corrupted chunk header detected");
+				throw new CorruptedChunkException("Corrupted chunk header detected (sector count larger than max)");
 			}
 			return null;
 		}
 
 		if($length > ($this->locationTable[$index][1] << 12)){ //Invalid chunk, bigger than defined number of sectors
-			MainLogger::getLogger()->error("Corrupted bigger chunk detected");
+			MainLogger::getLogger()->error("Corrupted bigger chunk detected (bigger than number of sectors given in header)");
 			$this->locationTable[$index][1] = $length >> 12;
 			$this->writeLocationIndex($index);
 		}elseif($compression !== self::COMPRESSION_ZLIB and $compression !== self::COMPRESSION_GZIP){
-			MainLogger::getLogger()->error("Invalid compression type");
-			return null;
+			throw new CorruptedChunkException("Invalid compression type (got $compression, expected " . self::COMPRESSION_ZLIB . " or " . self::COMPRESSION_GZIP . ")");
 		}
 
-		$chunk = $this->levelProvider->nbtDeserialize(fread($this->filePointer, $length - 1));
-		if($chunk instanceof Chunk){
-			return $chunk;
-		}else{
-			MainLogger::getLogger()->error("Corrupted chunk detected");
-			return null;
+		$chunkData = fread($this->filePointer, $length - 1);
+		if($chunkData === false){
+			throw new CorruptedChunkException("Corrupted chunk detected (failed to read chunk data from disk)");
+
 		}
+
+		return $chunkData;
 	}
 
 	public function chunkExists(int $x, int $z) : bool{
 		return $this->isChunkGenerated(self::getChunkOffset($x, $z));
 	}
 
-	protected function saveChunk(int $x, int $z, string $chunkData){
+	public function writeChunk(int $x, int $z, string $chunkData){
+		$this->lastUsed = time();
+
 		$length = strlen($chunkData) + 1;
 		if($length + 4 > self::MAX_SECTOR_LENGTH){
 			throw new ChunkException("Chunk is too big! " . ($length + 4) . " > " . self::MAX_SECTOR_LENGTH);
@@ -179,14 +185,6 @@ class RegionLoader{
 		$this->locationTable[$index][1] = 0;
 	}
 
-	public function writeChunk(Chunk $chunk){
-		$this->lastUsed = time();
-		$chunkData = $this->levelProvider->nbtSerialize($chunk);
-		if($chunkData !== false){
-			$this->saveChunk($chunk->getX() - ($this->getX() * 32), $chunk->getZ() - ($this->getZ() * 32), $chunkData);
-		}
-	}
-
 	protected static function getChunkOffset(int $x, int $z) : int{
 		return $x + ($z << 5);
 	}
@@ -204,8 +202,6 @@ class RegionLoader{
 
 			fclose($this->filePointer);
 		}
-
-		$this->levelProvider = null;
 	}
 
 	public function doSlowCleanUp() : int{

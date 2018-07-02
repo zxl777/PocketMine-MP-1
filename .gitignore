@@ -1,14 +1,16 @@
 players/*
 worlds/*
+plugin_data/*
 plugins/*
-bin/*
+bin*/*
 timings/*
+crashdumps/*
 *.log
 *.txt
 *.phar
 server.properties
 /pocketmine.yml
-memoryDump_*/*
+memory_dumps/*
 resource_packs/
 
 # Common IDEs

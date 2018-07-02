@@ -41,18 +41,17 @@ class ChangeDimensionPacket extends DataPacket{
 
 	protected function decodePayload(){
 		$this->dimension = $this->getVarInt();
-		$this->position = $this->getVector3Obj();
+		$this->position = $this->getVector3();
 		$this->respawn = $this->getBool();
 	}
 
 	protected function encodePayload(){
 		$this->putVarInt($this->dimension);
-		$this->putVector3Obj($this->position);
+		$this->putVector3($this->position);
 		$this->putBool($this->respawn);
 	}
 
 	public function handle(NetworkSession $session) : bool{
 		return $session->handleChangeDimension($this);
 	}
-
 }

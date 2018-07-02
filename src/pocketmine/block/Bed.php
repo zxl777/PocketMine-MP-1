@@ -23,9 +23,9 @@ declare(strict_types=1);
 
 namespace pocketmine\block;
 
-use pocketmine\event\TranslationContainer;
 use pocketmine\item\Item;
 use pocketmine\item\ItemFactory;
+use pocketmine\lang\TranslationContainer;
 use pocketmine\level\Level;
 use pocketmine\math\AxisAlignedBB;
 use pocketmine\math\Vector3;
@@ -55,14 +55,7 @@ class Bed extends Transparent{
 	}
 
 	protected function recalculateBoundingBox() : ?AxisAlignedBB{
-		return new AxisAlignedBB(
-			$this->x,
-			$this->y,
-			$this->z,
-			$this->x + 1,
-			$this->y + 0.5625,
-			$this->z + 1
-		);
+		return new AxisAlignedBB(0, 0, 0, 1, 0.5625, 1);
 	}
 
 	public function isHeadPart() : bool{
@@ -85,7 +78,7 @@ class Bed extends Transparent{
 
 		$this->getLevel()->setBlock($this, $this, false, false);
 
-		if(($other = $this->getOtherHalf()) !== null and !$other->isOccupied()){
+		if(($other = $this->getOtherHalf()) !== null and $other->isOccupied() !== $occupied){
 			$other->setOccupied($occupied);
 		}
 	}
@@ -176,7 +169,7 @@ class Bed extends Transparent{
 		if(!$down->isTransparent()){
 			$meta = (($player instanceof Player ? $player->getDirection() : 0) - 1) & 0x03;
 			$next = $this->getSide(self::getOtherHalfSide($meta));
-			if($next->canBeReplaced() === true and !$next->getSide(Vector3::SIDE_DOWN)->isTransparent()){
+			if($next->canBeReplaced() and !$next->getSide(Vector3::SIDE_DOWN)->isTransparent()){
 				$this->getLevel()->setBlock($blockReplace, BlockFactory::get($this->id, $meta), true, true);
 				$this->getLevel()->setBlock($next, BlockFactory::get($this->id, $meta | self::BITFLAG_HEAD), true, true);
 
@@ -188,15 +181,6 @@ class Bed extends Transparent{
 		}
 
 		return false;
-	}
-
-	public function onBreak(Item $item, Player $player = null) : bool{
-		$this->getLevel()->setBlock($this, BlockFactory::get(Block::AIR), true, true);
-		if(($other = $this->getOtherHalf()) !== null){
-			$this->getLevel()->useBreakOn($other, $item, null, $player !== null); //make sure tiles get removed
-		}
-
-		return true;
 	}
 
 	public function getDropsForCompatibleTool(Item $item) : array{
@@ -216,4 +200,15 @@ class Bed extends Transparent{
 		return [];
 	}
 
+	public function isAffectedBySilkTouch() : bool{
+		return false;
+	}
+
+	public function getAffectedBlocks() : array{
+		if(($other = $this->getOtherHalf()) !== null){
+			return [$this, $other];
+		}
+
+		return parent::getAffectedBlocks();
+	}
 }

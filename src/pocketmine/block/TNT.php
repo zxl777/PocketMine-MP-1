@@ -24,6 +24,8 @@ declare(strict_types=1);
 namespace pocketmine\block;
 
 use pocketmine\entity\Entity;
+use pocketmine\entity\projectile\Arrow;
+use pocketmine\item\FlintSteel;
 use pocketmine\item\Item;
 use pocketmine\math\Vector3;
 use pocketmine\Player;
@@ -46,8 +48,8 @@ class TNT extends Solid{
 	}
 
 	public function onActivate(Item $item, Player $player = null) : bool{
-		if($item->getId() === Item::FLINT_STEEL){
-			$item->useOn($this);
+		if($item instanceof FlintSteel){
+			$item->applyDamage(1);
 			$this->ignite();
 			return true;
 		}
@@ -55,17 +57,39 @@ class TNT extends Solid{
 		return false;
 	}
 
+	public function hasEntityCollision() : bool{
+		return true;
+	}
+
+	public function onEntityCollide(Entity $entity) : void{
+		if($entity instanceof Arrow and $entity->isOnFire()){
+			$this->ignite();
+		}
+	}
+
 	public function ignite(int $fuse = 80){
 		$this->getLevel()->setBlock($this, BlockFactory::get(Block::AIR), true);
 
 		$mot = (new Random())->nextSignedFloat() * M_PI * 2;
 		$nbt = Entity::createBaseNBT($this->add(0.5, 0, 0.5), new Vector3(-sin($mot) * 0.02, 0.2, -cos($mot) * 0.02));
-		$nbt->setByte("Fuse", $fuse);
+		$nbt->setShort("Fuse", $fuse);
 
 		$tnt = Entity::createEntity("PrimedTNT", $this->getLevel(), $nbt);
 
 		if($tnt !== null){
 			$tnt->spawnToAll();
 		}
+	}
+
+	public function getFlameEncouragement() : int{
+		return 15;
+	}
+
+	public function getFlammability() : int{
+		return 100;
+	}
+
+	public function onIncinerate() : void{
+		$this->ignite();
 	}
 }

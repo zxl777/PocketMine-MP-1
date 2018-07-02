@@ -24,10 +24,12 @@ declare(strict_types=1);
 namespace pocketmine\item;
 
 use pocketmine\entity\Entity;
+use pocketmine\entity\projectile\Arrow as ArrowEntity;
 use pocketmine\entity\projectile\Projectile;
 use pocketmine\event\entity\EntityShootBowEvent;
 use pocketmine\event\entity\ProjectileLaunchEvent;
-use pocketmine\level\sound\LaunchSound;
+use pocketmine\item\enchantment\Enchantment;
+use pocketmine\network\mcpe\protocol\LevelSoundEventPacket;
 use pocketmine\Player;
 
 class Bow extends Tool{
@@ -39,7 +41,7 @@ class Bow extends Tool{
 		return 200;
 	}
 
-	public function getMaxDurability(){
+	public function getMaxDurability() : int{
 		return 385;
 	}
 
@@ -64,6 +66,21 @@ class Bow extends Tool{
 
 		$entity = Entity::createEntity("Arrow", $player->getLevel(), $nbt, $player, $force == 2);
 		if($entity instanceof Projectile){
+			$infinity = $this->hasEnchantment(Enchantment::INFINITY);
+			if($entity instanceof ArrowEntity){
+				if($infinity){
+					$entity->setPickupMode(ArrowEntity::PICKUP_CREATIVE);
+				}
+				if(($punchLevel = $this->getEnchantmentLevel(Enchantment::PUNCH)) > 0){
+					$entity->setPunchKnockback($punchLevel);
+				}
+			}
+			if(($powerLevel = $this->getEnchantmentLevel(Enchantment::POWER)) > 0){
+				$entity->setBaseDamage($entity->getBaseDamage() + (($powerLevel + 1) / 2));
+			}
+			if($this->hasEnchantment(Enchantment::FLAME)){
+				$entity->setOnFire($entity->getFireTicks() * 20 + 100);
+			}
 			$ev = new EntityShootBowEvent($player, $this, $entity, $force);
 
 			if($force < 0.1 or $diff < 5){
@@ -80,7 +97,9 @@ class Bow extends Tool{
 			}else{
 				$entity->setMotion($entity->getMotion()->multiply($ev->getForce()));
 				if($player->isSurvival()){
-					$player->getInventory()->removeItem(ItemFactory::get(Item::ARROW, 0, 1));
+					if(!$infinity){ //TODO: tipped arrows are still consumed when Infinity is applied
+						$player->getInventory()->removeItem(ItemFactory::get(Item::ARROW, 0, 1));
+					}
 					$this->applyDamage(1);
 				}
 
@@ -90,7 +109,7 @@ class Bow extends Tool{
 						$ev->getProjectile()->flagForDespawn();
 					}else{
 						$ev->getProjectile()->spawnToAll();
-						$player->level->addSound(new LaunchSound($player), $player->getViewers());
+						$player->getLevel()->broadcastLevelSoundEvent($player, LevelSoundEventPacket::SOUND_BOW);
 					}
 				}else{
 					$entity->spawnToAll();

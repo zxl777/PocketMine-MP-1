@@ -36,15 +36,14 @@ class RespawnPacket extends DataPacket{
 	public $position;
 
 	protected function decodePayload(){
-		$this->position = $this->getVector3Obj();
+		$this->position = $this->getVector3();
 	}
 
 	protected function encodePayload(){
-		$this->putVector3Obj($this->position);
+		$this->putVector3($this->position);
 	}
 
 	public function handle(NetworkSession $session) : bool{
 		return $session->handleRespawn($this);
 	}
-
 }
